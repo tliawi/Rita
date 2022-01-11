@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+    
+<!--
+index.html
+
+Copyright 2022 John R C Fairfield, see MIT license
+    
+Put the two files index.html and rita.js in a folder (directory) and
+open index.html in the Chrome browser.
+
+-->
+    
+<head>
+    
+<style>
+    
+canvas {
+    margin-right:15px;
+    border:1px solid #d3d3d3;
+    float: left;
+}
+    
+body {
+    font-size:medium;
+    background-color: linen;
+}
+
+</style>
+    
+</head>
+<body>
+
+<p style="font-size: small">
+Be advised, this testbed is not user friendly and has been tested only in Chrome on macOS.<br>
+    
+<div style="max-width:512px;">
+  <div style="float:left" >
+    <a href='#' class='button' id='btn-download' download='ckrbdPic.png'>download picture</a>&nbsp;&nbsp;&nbsp;&nbsp;
+    <span id='msgDiv'></span>
+  </div>
+  <div style="float:right">
+    <span id='mousePos' ></span>
+  </div>
+  <br>
+</div>
+    
+
+<canvas id="imgCanvas" width="512" height="600" >Your browser does not support the HTML5 canvas tag.</canvas>
+
+<h2><a href="https://drive.google.com/open?id=1C_2Oy4wpvf8gNk4AH4UV7v6LLSFd9heF85NJPLOfrK0" target="_blank"
+        >Ripple Tank</a></h2> 
+
+<p> <strong> s</strong>: step <br>
+    <strong> c</strong>: clear
+</p>
+    
+<script src="rita.js" ></script>
+    
+<script>
+
+    
+function writeMessage(message) {
+    document.getElementById("msgDiv").innerHTML = message;
+}
+
+function writeMousePos(message) {
+    document.getElementById("mousePos").innerHTML = message;
+}
+    
+
+function prefixIJ(prefixStr,cell){
+    return prefixStr + cell.i + "," + cell.j;
+}
+
+function getMousePos(evt) {
+    var rect = myCanvas.getBoundingClientRect();
+    return  {
+      i: Math.floor(evt.clientY - rect.top),
+      j: Math.floor(evt.clientX - rect.left)
+    };
+}
+
+function inCanvas(pos){
+    if (!pos) return false;
+    if (pos.i < 0 || pos.j<0) return false;
+    if (pos.i >= myCanvas.height || pos.j >= myCanvas.width) return false;
+    return true;
+}
+
+window.addEventListener("load", pageFullyLoaded, false);
+
+var rt, myCanvas;
+var mouseDownPos = null;
+var mouseMovePos = null; // only used when mouse is up, i.e. not during a drag
+    
+function pageFullyLoaded(e) {
+    
+    function mouseDownHandler(evt) {
+        evt.stopPropagation();
+        var temp = getMousePos(evt);
+        if (!inCanvas(temp)) {
+            mouseDownPos = null;
+            console.log("mDn mousePos not in canvas");
+            return;
+        }
+        mouseDownPos = temp;
+        writeMessage(prefixIJ("mDn ",mouseDownPos));
+        writeMousePos(prefixIJ("",mouseDownPos));
+    }
+    
+    function mouseUpHandler(evt) {
+        var mouseUpPos;
+        
+        evt.stopPropagation();
+        if (mouseDownPos == null) {
+            console.log("mUp mouseDownPos null.");
+            return;
+        }
+        var mouseUpPos = getMousePos(evt);
+        if (!inCanvas(mouseUpPos)) {
+            mouseDownPos = null;
+            return;
+        }
+        
+        var tempDn = mouseDownPos;
+        mouseDownPos = null; //lift mouseDownPos asap
+        
+        writeMessage(prefixIJ('dn ',tempDn)+prefixIJ("  up ",mouseUpPos));
+        writeMousePos(prefixIJ("",mouseUpPos));
+        
+    }
+    
+    //on document, not canvas, so can detect if outside of canvas and set mouseMovePos to null
+    function mouseMoveHandler(evt) {
+        var mmp = getMousePos(evt);
+        if (inCanvas(mmp)){
+            writeMousePos(prefixIJ('',mmp));
+            
+            if (mouseDownPos) {
+                mouseMovePos = null;
+                return; //mouseMoves, doModes, traceProvenance all blocked during drag
+            }
+            
+            mouseMovePos = mmp;
+            //if (!animationFlag) doMode();
+            
+        } else {
+            mouseMovePos = null;
+            mouseDownPos = null;
+            //if (!animationFlag) doMode();
+        }
+        
+        
+    }
+    
+    /*
+    function keydownListener(event){
+        if      (event.key == ">") { plusLevel++; onShiftDown(); }
+        else if (event.key == "<") { if (plusLevel>0) plusLevel--; onShiftDown(); }
+        else if (event.key == "Shift") onShiftDown();
+        else if (event.key == "v") onVDown();
+    }
+    */
+    
+    function keyupListener(event){
+        
+        var digit = parseInt(event.key);
+        
+        if ( 1 <= digit && digit <= 9) rt.step(digit);
+        
+        return false;
+    }
+    
+    
+    myCanvas = document.getElementById("imgCanvas");
+    
+    document.addEventListener('keyup',keyupListener);
+    //document.addEventListener('keydown',keydownListener)
+    
+    document.onpointermove = mouseMoveHandler;
+    myCanvas.onpointerup = mouseUpHandler;
+    myCanvas.onpointerdown = mouseDownHandler;
+    
+    rt = rita(myCanvas); //in rita.js
+    
+}
+
+    
+</script>
+
+</body>
+</html>
