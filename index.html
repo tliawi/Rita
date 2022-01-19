@@ -51,9 +51,14 @@ Be advised, this testbed is not user friendly and has been tested only in Chrome
 <h2><a href="https://drive.google.com/open?id=1C_2Oy4wpvf8gNk4AH4UV7v6LLSFd9heF85NJPLOfrK0" target="_blank"
         >Ripple Tank</a></h2> 
 
-<p> <strong> s</strong>: step <br>
+<p> <strong> 1-9</strong>: steps <br>
     <strong> c</strong>: clear
 </p>
+<p> p:<span id='potential'>ppp</span> <br>
+    k:<span id='kinetic'>kkk</span> <br>
+    total:<span id='total'>ttt</span>
+</p>
+    
     
 <script src="rita.js" ></script>
     
@@ -165,9 +170,23 @@ function pageFullyLoaded(e) {
     
     function keyupListener(event){
         
-        var digit = parseInt(event.key);
+        function showEnergy(){
+            let p = rt.potentialEnergy();
+            let k = rt.kineticEnergy();
+            let e = p+k;
+            document.getElementById('potential').innerHTML = p.toString();
+            document.getElementById('kinetic').innerHTML = k.toString();
+            document.getElementById('total').innerHTML = e.toString();
+        }
         
-        if ( 1 <= digit && digit <= 9) rt.step(digit);
+        if (event.key == 'c' || event.key == 'C'){
+            rt.clear();
+        } else {
+            let digit = parseInt(event.key);
+            if ( 1 <= digit && digit <= 9) rt.step(digit);
+        }
+        
+        showEnergy();
         
         return false;
     }
