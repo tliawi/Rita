@@ -171,12 +171,14 @@ function pageFullyLoaded(e) {
     function keyupListener(event){
         
         function showEnergy(){
-            let p = rt.potentialEnergy();
+            let ps = rt.getPotentialSides();
+            let pm = rt.getPotentialMain();
             let k = rt.kineticEnergy();
+            let p = ps+pm;
             let e = p+k;
-            document.getElementById('potential').innerHTML = p.toString();
-            document.getElementById('kinetic').innerHTML = k.toString();
-            document.getElementById('total').innerHTML = e.toString();
+            document.getElementById('potential').innerHTML = p+" = "+ps+" + "+pm ;
+            document.getElementById('kinetic').innerHTML = k+"";
+            document.getElementById('total').innerHTML = e+"";
         }
         
         if (event.key == 'c' || event.key == 'C'){

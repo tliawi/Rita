@@ -20,11 +20,21 @@ var width = imgCanvas.width;
 var imgData = imgContext.getImageData(0, 0, width, height); //is a copy
 var rgba = imgData.data; //can modify this copy, and subsequently display with an imgContext.putImageData
 var zoom = 1; //scale of drawImage
-    
 // Two dimensional structures (rgba and cellauto) are indexed in row major order (i.e. row, column) 
 // with the origin in the upper left corner, 
 // positive going down (in rows) and to the right (in cols).
+
+// C+ = gain*((N0+S0+E0+W0) + present*C0 + past*C- )
     
+var alpha = 0.01;
+var beta = 0.02;
+
+function setAlpha(a){
+    alpha = a;
+}
+function setBeta(b){
+    beta = b;
+}
 
 function allocate2d(v){
     var y = new Array(height);
@@ -33,6 +43,8 @@ function allocate2d(v){
 }
     
 function clear(){
+    potentialSides = 0;
+    potentialMain  = 0;
     for (let i=0;i<height;i++) for (let j=0;j<width;j++) u[i][j] = up[i][j] = um[i][j] = 0;
     clearRGBA();
 }
@@ -57,34 +69,30 @@ function magnitude(numArr){ //numArr a one dimensional numeric array
 // in a given height x width numeric array (like um,u,up)
 // Numeric values are rendered in a spectrum 
 // from green (positive) to yellow (zero) to red (negative).
-function renderToRGBA(numArr, threshold=9999999999){
+// Call with no second parm to have it adapt color range to datapoint having maximum magnitude.
+function renderToRGBA(numArr, mag){
     
- /*   // find greatest magnitude, to normalize with
-    var mag = 0;
-    //normalize very differently if threshold is so small that unit differences will be clearly distinguishable.
-    if (threshold <= 10) mag = threshold;
-    else { 
+    if (mag == undefined){
+        // find greatest magnitude, to normalize with
+        mag = 0;
         for (let i=0;i<height;i++) mag = Math.max(mag,magnitude(numArr[i]));
-        if (mag==0) mag = 1; //avoid zerodivide in toxic all-zero case
     }
-    console.log("magnitude "+mag);
- */
+    else mag = Math.abs(mag); //guard against negative parameter
+    if (mag==0) mag = 1; //avoid zerodivide in toxic all-zero case
     
-    var mag = threshold;
     //rgba is linear canvas rgba data array of integer 0-255 values
-    
     for (let i=0;i<height;i++){
         for (let j=0;j<width;j++){
             let ix = 4*(i*width + j);
             let num = numArr[i][j];
             if (num<0) {
-                num = num < -threshold? threshold: -num; //num now positive, <= threshold == mag
+                num = num < -mag? mag: -num; //num now positive <= mag
                 let s = Math.floor(255*num/mag); //runs from 0 to 255 as num from 0 to mag
                 rgba[ix]   = s; //red
                 rgba[ix+1] = Math.floor(s/2); //green
                 rgba[ix+2] = s; //blue
             } else {
-                num = num > threshold? threshold: num; //num positive <= threshold == mag
+                num = num > mag? mag: num; //num positive <= mag
                 let s = Math.floor(255*num/mag);//runs from 0 to 255 as num from 0 to mag
                 rgba[ix]   = Math.floor(s/2); //red
                 rgba[ix+1] = s; //green
@@ -104,7 +112,7 @@ um = allocate2d(0.0); //u minus, prior time step
 u  = allocate2d(0.0); //current
 up = allocate2d(0.0); //u plus, next time step, calculated as fcn of u and um
     
-meta = allocate2d(0); //determines the function to be applied at that pixel
+//meta = allocate2d(0); //determines the function to be applied at that pixel
     
 //current velocity = (u - um)/T, where T is time it takes to do iteration, here taken as 1
 
@@ -114,18 +122,27 @@ function advanceT(){
     u  = up;
     up = z; //to be overwritten subsequently
 }
+    
+function getUp() {return up }
+function getU()  {return u  }
+function getUm() {return um }
 
-function potentialEnergy(){
-    var e = 0;
-    for (let i=0;i<height;i++) for (let j=0;j<width;j++) e+= Math.abs(u[i][j]);
-    return e;
+var potentialSides = 0;
+var potentialMain  = 0;
+    
+function getPotentialSides(){
+    return potentialSides;
+}
+
+function getPotentialMain(){
+    return potentialMain;
 }
     
 function kineticEnergy(){
     var e = 0;
     for (let i=0;i<height;i++) for (let j=0;j<width;j++) {
         let del = u[i][j]-um[i][j];
-        e+= del * del;
+        e+= del * del/2; //not *beta!
     }
     return e;
 }
@@ -133,6 +150,9 @@ function kineticEnergy(){
 function computeUp(){
     var maxi = height - 1;
     var maxj = width - 1;
+    
+    potentialSides = 0;
+    potentialMain  = 0;
     
     //average of my neighbors current values, minus my prior value
     
@@ -178,9 +198,29 @@ function computeUp(){
     }
     
     //core
+    // up = u + du/dt + alpha*laplacian - beta*u
+    var N,S,W,E,UIJ;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
-            up[i][j] = (u[i-1][j]+u[i+1][j]+u[i][j-1]+u[i][j+1])/4.0 - um[i][j];
+            //first term is u
+            //remaining terms will make up next iteration's du/dt
+            //second term is current du/dt
+            //alpha term is accel (change in du/dt) from Laplacian springs connecting i,j to NSEW neighbors, 
+            //must be zero on flat slope 
+            //beta term is accel (change in du/dt) from main, central vertical spring at i,j
+            //alpha and beta reflect spring stiffness/mass
+            UIJ = u[i][j];
+            N = u[i-1][j]-UIJ; 
+            S = u[i+1][j]-UIJ; 
+            W = u[i][j-1]-UIJ; 
+            E = u[i][j+1]-UIJ;
+            potentialSides += alpha*(N*N + S*S + E*E + W*W)/2; //in side springs displacements
+            potentialMain  += beta*UIJ*UIJ/2; //in main spring displacement
+            up[i][j] =  UIJ 
+                        + UIJ - um[i][j]  //current du/dt
+                        //+ alpha*(u[i-1][j]+u[i+1][j]+u[i][j-1]+u[i][j+1] -4*u[i][j]) //alpha * Laplacian
+                        + alpha*(N+S+E+W) //side springs can cancel each other, do so if flat slope
+                        - beta*UIJ; //beta * main spring displacement
         }
     }
     
@@ -190,7 +230,7 @@ function step(n=1){
     for (let i=0;i<n;i++){
         computeUp();
         advanceT();
-        renderToRGBA(u,1.0);
+        renderToRGBA(u);
     }
 }
     
@@ -203,11 +243,12 @@ return {
         imgData:imgData,
         renderToRGBA: renderToRGBA,
         setZoom:setZoom,
-        potentialEnergy: potentialEnergy,
+        setAlpha: setAlpha,
+        setBeta: setBeta,
+        getPotentialSides: getPotentialSides,
+        getPotentialMain: getPotentialMain,
         kineticEnergy: kineticEnergy,
         step: step,
-        um: um,
-        u: u,
-        up:up,
+        getUp: getUp, getU:getU, getUm: getUm,
     };
 }
