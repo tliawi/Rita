@@ -26,8 +26,8 @@ var zoom = 1; //scale of drawImage
 
 // C+ = gain*((N0+S0+E0+W0) + present*C0 + past*C- )
     
-var alpha = 0.01;
-var beta = 0.02;
+var alpha = 0.2; //horizontal springs to 4-neighbors, laPlacian alpha*(N+S+E+W - 4c)
+var beta = 0.002; // vertical spring to 0, beta*u
 
 function setAlpha(a){
     alpha = a;
@@ -121,6 +121,7 @@ function advanceT(){
     um = u;
     u  = up;
     up = z; //to be overwritten subsequently
+    clockTic++;
 }
     
 function getUp() {return up }
@@ -155,8 +156,8 @@ function computeUp(){
     potentialMain  = 0;
     
     //average of my neighbors current values, minus my prior value
-    
-    //at boundries met by annulling counterwave.
+    //At boundries met by annulling counterwave?
+    //At boundries met by annulling counterwave?
     //Suppose 'missing' 4-neighbors at boundaries are virtualized as
     //the negative of their opposing side (thinking NSEW, if N is missing, use -S, etc).
     //But that turns out to be the same as fixing the entire boundary at 0, since 4 corners will be 0
@@ -181,6 +182,7 @@ function computeUp(){
         up[maxi][j] = (u[maxi][j-1]+u[maxi][j+1]+u[maxi-1][j])/3.0  - um[maxi][j];
     }
     */
+    /*
     //four corners
     up[0][0]       = 0;
     up[maxi][maxj] = 0;
@@ -195,6 +197,23 @@ function computeUp(){
     for (let j=1;j<maxj;j++){
         up[0][j] = (u[0][j-1]+u[0][j+1]+u[1][j])/3.0                - um[0][j];
         up[maxi][j] = (u[maxi][j-1]+u[maxi][j+1]+u[maxi-1][j])/3.0  - um[maxi][j];
+    }
+    */
+    
+    up[0][0]       = u[1][1];
+    up[maxi][maxj] = u[maxi-1][maxj-1];
+    up[0][maxj]    = u[1][maxj-1];
+    up[maxi][0]    = u[maxi-1][1];
+    
+    // left and right edge
+    for (let i=1;i<maxi;i++) { 
+        up[i][0]    = u[i][1];
+        up[i][maxj] = u[i][maxj-1];
+    }
+    // top and bottom edge
+    for (let j=1;j<maxj;j++){
+        up[0][j]    = u[1][j];
+        up[maxi][j] = u[maxi-1][j];
     }
     
     //core
@@ -224,6 +243,8 @@ function computeUp(){
         }
     }
     
+    pumpColumn(); //does nothing if pumpCol == 0, else overwrites up[][pumpCol].
+    
 }  
     
 function step(n=1){
@@ -235,6 +256,39 @@ function step(n=1){
 }
     
 function setZoom(z=1){ zoom = z; }
+
+// d is distance from center, sigma > 0 is variance, width, of bump
+function gaussian(distanceSquared,sigma){
+    const c = Math.sqrt(2*Math.PI);
+    return Math.exp(-(distanceSquared/(sigma*sigma))/2)/(sigma*c);
+}
+
+//Per Ostrov and Rucker is bad to seed with discontinuities
+//Does not seed edges
+function seed(row,col,sigma,amplitude=1){
+    var maxi = height - 1;
+    var maxj = width - 1;
+    for (let i=1;i<maxi;i++) { 
+        for (let j=1;j<maxj;j++){
+            um[i][j] = u[i][j] = amplitude*gaussian((i-row)*(i-row)+(j-col)*(j-col), sigma); //continuous in space
+            //and time, in that is at top dead center, about to turn down, i.e. vertical velocity is zero
+        }
+    }
+}
+
+var clockTic=0; //counts step advanceT's
+function setClockTic(st){clockTic=st}
+var pumpCol=0;
+function setPumpCol(pc){pumpCol=pc; setClockTic(0);}
+var pumpPeriod=9;
+function setPumpPeriod(p){pumpPeriod=p; setClockTic(0);}
+    
+function pumpColumn(){ //period is number of tics in full cycle
+    if (pumpCol<=0 || pumpCol>=width-1) return; //can't pump borders
+    amp = Math.sin(2*Math.PI*clockTic/pumpPeriod);
+    for (let i=0;i<height-1;i++){ up[i][pumpCol] = amp;}
+}
+
     
 return { 
         clear:clear,
@@ -249,6 +303,10 @@ return {
         getPotentialMain: getPotentialMain,
         kineticEnergy: kineticEnergy,
         step: step,
+        seed: seed,
+        setClockTic: setClockTic,
+        setPumpCol: setPumpCol,
+        setPumpPeriod: setPumpPeriod,
         getUp: getUp, getU:getU, getUm: getUm,
     };
 }
