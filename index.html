@@ -54,11 +54,14 @@ Be advised, this testbed is not user friendly and has been tested only in Chrome
 <p> <strong> 1-9</strong>: steps <br>
     <strong> c</strong>: clear
 </p>
-<p> p:<span id='potential'>ppp</span> <br>
-    k:<span id='kinetic'>kkk</span> <br>
-    total:<span id='total'>ttt</span>
+<font face="Courier">
+<p> potential:<span id='potential'>ppp</span> <br>
+    &nbsp;&nbsp;kinetic:<span id='kinetic'>kkk</span> <br>
+    &nbsp;&nbsp;&nbsp;&nbsp;Total:<span id='total'>ttt</span> <br><br>
+    &nbsp;&nbsp;emitted:<span id='emitted'>eee</span> <br>
+    &nbsp;absorbed:<span id='absorbed'>aaa</span> <br>
 </p>
-    
+</font>
     
 <script src="rita.js" ></script>
     
@@ -171,14 +174,15 @@ function pageFullyLoaded(e) {
     function keyupListener(event){
         
         function showEnergy(){
-            let ps = rt.getPotentialSides();
-            let pm = rt.getPotentialMain();
-            let k = rt.kineticEnergy();
-            let p = ps+pm;
-            let e = p+k;
-            document.getElementById('potential').innerHTML = p+" = "+ps+" + "+pm ;
-            document.getElementById('kinetic').innerHTML = k+"";
-            document.getElementById('total').innerHTML = e+"";
+            let p = 6;
+            let energies = rt.getEnergies();
+            let pTotal = energies.potentialMain + energies.potentialSides;
+            let eTotal = pTotal + energies.kinetic;
+            document.getElementById('potential').innerHTML = pTotal.toFixed(p)+" = "+energies.potentialMain.toFixed(p)+" + "+energies.potentialSides.toFixed(p) ;
+            document.getElementById('kinetic').innerHTML = energies.kinetic.toFixed(p)+"";
+            document.getElementById('total').innerHTML = eTotal.toFixed(p)+"";
+            document.getElementById('emitted').innerHTML = energies.emitted.toFixed(p);
+            document.getElementById('absorbed').innerHTML = energies.absorbed.toFixed(p);
         }
         
         if (event.key == 'c' || event.key == 'C'){

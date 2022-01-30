@@ -16,6 +16,8 @@ var imgContext = imgCanvas.getContext("2d");
 imgContext.globalAlpha = 1; //no transparency 
 var height = imgCanvas.height;
 var width = imgCanvas.width;
+var maxi = height-1;
+var maxj = width-1;
     
 var imgData = imgContext.getImageData(0, 0, width, height); //is a copy
 var rgba = imgData.data; //can modify this copy, and subsequently display with an imgContext.putImageData
@@ -26,8 +28,8 @@ var zoom = 1; //scale of drawImage
 
 // C+ = gain*((N0+S0+E0+W0) + present*C0 + past*C- )
     
-var alpha = 0.2; //horizontal springs to 4-neighbors, laPlacian alpha*(N+S+E+W - 4c)
-var beta = 0.002; // vertical spring to 0, beta*u
+var alpha = 0.002; // vertical spring to 0, alpha*u 
+var beta = 0.2;    // horizontal springs to 4-neighbors, laPlacian beta*(N+S+E+W - 4u)
 
 function setAlpha(a){
     alpha = a;
@@ -108,14 +110,12 @@ function renderToRGBA(numArr, mag){
     
 }
 
-um = allocate2d(0.0); //u minus, prior time step
-u  = allocate2d(0.0); //current
-up = allocate2d(0.0); //u plus, next time step, calculated as fcn of u and um
+var um = allocate2d(0.0); //u minus, prior time step
+var u  = allocate2d(0.0); //current
+var up = allocate2d(0.0); //u plus, next time step, calculated as fcn of u and um
     
-//meta = allocate2d(0); //determines the function to be applied at that pixel
+var func = allocate2d(standardFunc); //determines the function to be applied at that pixel
     
-//current velocity = (u - um)/T, where T is time it takes to do iteration, here taken as 1
-
 function advanceT(){
     var z = um;
     um = u;
@@ -128,35 +128,65 @@ function getUp() {return up }
 function getU()  {return u  }
 function getUm() {return um }
 
+//global energies
 var potentialSides = 0;
 var potentialMain  = 0;
+var emitted = 0;
+var absorbed = 0;
     
-function getPotentialSides(){
-    return potentialSides;
+function getEnergies(){
+    return { 
+        potentialSides:potentialSides,
+        potentialMain:potentialMain,
+        kinetic:kineticEnergy(),
+        emitted:emitted,
+        absorbed:absorbed,
+    }
 }
 
-function getPotentialMain(){
-    return potentialMain;
-}
-    
 function kineticEnergy(){
-    var e = 0;
+    let e = 0;
     for (let i=0;i<height;i++) for (let j=0;j<width;j++) {
         let del = u[i][j]-um[i][j];
-        e+= del * del/2; //not *beta!
+        e+= del * del/2; //not *beta! Spring tension's got nothing to do with kinetic energy
     }
     return e;
 }
+    
+// calculates up = u + du/dt - alpha*u + beta*laplacian
+function standardFunc(Uij,Umij,N,S,E,W){ 
+
+    //update energies
+    //divide by two because you're calculating 
+    //work done against the spring to take it to current position, 
+    //and spring's force increases linearly with displacement,
+    //so taking triangular half of square area force*force,
+    //since choosing units such that 
+    //spatial (i,j) units equal u (orthogonal spring displacement) units
+    potentialMain  += alpha*Uij*Uij/2; //in main spring displacement
+    potentialSides += beta*(N*N + S*S + E*E + W*W)/2; //in side springs displacements
+
+    //first term is u
+    //remaining terms will make up next iteration's du/dt
+    //second term is current du/dt
+    //alpha and beta reflect spring stiffness/mass
+    //alpha term is accel (change in du/dt) from main, central vertical spring at i,j
+    //beta term is accel (change in du/dt) from springs connecting i,j to NSEW neighbors,
+    //must be zero on flat slope 
+    return  Uij //current value
+            + Uij - Umij  //current du/dt
+            // plus changes in du/dt for next iteration:
+            + alpha*(-Uij) // main spring displacement force
+            //+ beta*(u[i-1][j]+u[i+1][j]+u[i][j-1]+u[i][j+1] -4*u[i][j]) // Laplacian
+            // N,S,E,W are *differences* betwen u and its 4 neighbors
+            + beta*(N+S+E+W); //side springs can cancel each other, do so on any flat slope
+}
 
 function computeUp(){
-    var maxi = height - 1;
-    var maxj = width - 1;
     
     potentialSides = 0;
     potentialMain  = 0;
-    
-    //average of my neighbors current values, minus my prior value
-    //At boundries met by annulling counterwave?
+
     //At boundries met by annulling counterwave?
     //Suppose 'missing' 4-neighbors at boundaries are virtualized as
     //the negative of their opposing side (thinking NSEW, if N is missing, use -S, etc).
@@ -164,82 +194,36 @@ function computeUp(){
     //(N-S, E-W, so 0), and 4 edges will be independent of what happens in interior--for example, a N-S edge
     //will be insensitive to anything in interior (since E-W is zero), so will only propagate along the edge,
     //which if it wasn't initialized to nonzero values will stay 0.
+    //returns u[i][j] save for border cells, when it returns inner neighbor
     
-    /*
-    //four corners
-    up[0][0]       = (u[1][0]+u[0][1])/2.0                  - um[0][0];
-    up[maxi][maxj] = (u[maxi][maxj-1]+u[maxi-1][maxj])/2.0  - um[maxi][maxj];
-    up[0][maxj]    = (u[0][maxj-1]+u[1][maxj])/2.0          - um[0][maxj];
-    up[maxi][0]    = (u[maxi-1][0]+u[maxi][1])/2.0          - um[maxi][0];
-    
-    //four edges
-    for (let i=1;i<maxi;i++) { 
-        up[i][0] = (u[i-1][0]+u[i+1][0]+u[i][1])/3.0                - um[i][0];
-        up[i][maxj] = (u[i-1][maxj]+u[i+1][maxj]+u[i][maxj-1])/3.0  - um[i][maxj];
+    function noBorder(i,j){
+        i = i==0?1:i; 
+        i = i==maxi?maxi-1:i;
+        
+        j = j==0?1:j;
+        j = j==maxj?maxj-1:j;
+        
+        return u[i][j];
     }
-    for (let j=1;j<maxj;j++){
-        up[0][j] = (u[0][j-1]+u[0][j+1]+u[1][j])/3.0                - um[0][j];
-        up[maxi][j] = (u[maxi][j-1]+u[maxi][j+1]+u[maxi-1][j])/3.0  - um[maxi][j];
-    }
-    */
-    /*
-    //four corners
-    up[0][0]       = 0;
-    up[maxi][maxj] = 0;
-    up[0][maxj]    = 0;
-    up[maxi][0]    = 0;
     
     //four edges
-    for (let i=1;i<maxi;i++) { 
-        up[i][0] = (u[i-1][0]+u[i+1][0]+u[i][1])/3.0                - um[i][0];
-        up[i][maxj] = (u[i-1][maxj]+u[i+1][maxj]+u[i][maxj-1])/3.0  - um[i][maxj];
+    //left and right
+    for (let i=0;i<maxi;i++) { 
+        up[i][0] = noBorder(i,0);
+        up[i][maxj] = noBorder(i,maxj);
     }
+    //top and bottom
     for (let j=1;j<maxj;j++){
-        up[0][j] = (u[0][j-1]+u[0][j+1]+u[1][j])/3.0                - um[0][j];
-        up[maxi][j] = (u[maxi][j-1]+u[maxi][j+1]+u[maxi-1][j])/3.0  - um[maxi][j];
-    }
-    */
-    
-    up[0][0]       = u[1][1];
-    up[maxi][maxj] = u[maxi-1][maxj-1];
-    up[0][maxj]    = u[1][maxj-1];
-    up[maxi][0]    = u[maxi-1][1];
-    
-    // left and right edge
-    for (let i=1;i<maxi;i++) { 
-        up[i][0]    = u[i][1];
-        up[i][maxj] = u[i][maxj-1];
-    }
-    // top and bottom edge
-    for (let j=1;j<maxj;j++){
-        up[0][j]    = u[1][j];
-        up[maxi][j] = u[maxi-1][j];
+        up[0][j] = noBorder(0,j);
+        up[maxi][j] = noBorder(maxi,j);
     }
     
     //core
-    // up = u + du/dt + alpha*laplacian - beta*u
-    var N,S,W,E,UIJ;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
-            //first term is u
-            //remaining terms will make up next iteration's du/dt
-            //second term is current du/dt
-            //alpha term is accel (change in du/dt) from Laplacian springs connecting i,j to NSEW neighbors, 
-            //must be zero on flat slope 
-            //beta term is accel (change in du/dt) from main, central vertical spring at i,j
-            //alpha and beta reflect spring stiffness/mass
-            UIJ = u[i][j];
-            N = u[i-1][j]-UIJ; 
-            S = u[i+1][j]-UIJ; 
-            W = u[i][j-1]-UIJ; 
-            E = u[i][j+1]-UIJ;
-            potentialSides += alpha*(N*N + S*S + E*E + W*W)/2; //in side springs displacements
-            potentialMain  += beta*UIJ*UIJ/2; //in main spring displacement
-            up[i][j] =  UIJ 
-                        + UIJ - um[i][j]  //current du/dt
-                        //+ alpha*(u[i-1][j]+u[i+1][j]+u[i][j-1]+u[i][j+1] -4*u[i][j]) //alpha * Laplacian
-                        + alpha*(N+S+E+W) //side springs can cancel each other, do so if flat slope
-                        - beta*UIJ; //beta * main spring displacement
+            let UIJ = u[i][j];
+            up[i][j] = func[i][j](UIJ, um[i][j],
+                       u[i-1][j]-UIJ, u[i+1][j]-UIJ, u[i][j+1]-UIJ, u[i][j-1]-UIJ);
         }
     }
     
@@ -285,7 +269,7 @@ function setPumpPeriod(p){pumpPeriod=p; setClockTic(0);}
     
 function pumpColumn(){ //period is number of tics in full cycle
     if (pumpCol<=0 || pumpCol>=width-1) return; //can't pump borders
-    amp = Math.sin(2*Math.PI*clockTic/pumpPeriod);
+    let amp = Math.sin(2*Math.PI*clockTic/pumpPeriod);
     for (let i=0;i<height-1;i++){ up[i][pumpCol] = amp;}
 }
 
@@ -299,8 +283,7 @@ return {
         setZoom:setZoom,
         setAlpha: setAlpha,
         setBeta: setBeta,
-        getPotentialSides: getPotentialSides,
-        getPotentialMain: getPotentialMain,
+        getEnergies: getEnergies,
         kineticEnergy: kineticEnergy,
         step: step,
         seed: seed,
