@@ -55,7 +55,10 @@ Be advised, this testbed is not user friendly and has been tested only in Chrome
     <strong> c</strong>: clear
 </p>
 <font face="Courier">
-<p> potential:<span id='potential'>ppp</span> <br>
+<p> 
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;main:<span id='main'>mmm</span> <br>
+    &nbsp;&nbsp;&nbsp;&nbsp;sides:<span id='sides'>sss</span> <br><br>
+    potential:<span id='potential'>ppp</span> <br>
     &nbsp;&nbsp;kinetic:<span id='kinetic'>kkk</span> <br>
     &nbsp;&nbsp;&nbsp;&nbsp;Total:<span id='total'>ttt</span> <br><br>
     &nbsp;&nbsp;emitted:<span id='emitted'>eee</span> <br>
@@ -178,9 +181,11 @@ function pageFullyLoaded(e) {
             let energies = rt.getEnergies();
             let pTotal = energies.potentialMain + energies.potentialSides;
             let eTotal = pTotal + energies.kinetic;
-            document.getElementById('potential').innerHTML = pTotal.toFixed(p)+" = "+energies.potentialMain.toFixed(p)+" + "+energies.potentialSides.toFixed(p) ;
-            document.getElementById('kinetic').innerHTML = energies.kinetic.toFixed(p)+"";
-            document.getElementById('total').innerHTML = eTotal.toFixed(p)+"";
+            document.getElementById('main').innerHTML = energies.potentialMain.toFixed(p);
+            document.getElementById('sides').innerHTML = energies.potentialSides.toFixed(p);
+            document.getElementById('potential').innerHTML = pTotal.toFixed(p);
+            document.getElementById('kinetic').innerHTML = energies.kinetic.toFixed(p);
+            document.getElementById('total').innerHTML = eTotal.toFixed(p);
             document.getElementById('emitted').innerHTML = energies.emitted.toFixed(p);
             document.getElementById('absorbed').innerHTML = energies.absorbed.toFixed(p);
         }

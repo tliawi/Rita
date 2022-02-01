@@ -30,12 +30,21 @@ var zoom = 1; //scale of drawImage
     
 var alpha = 0.002; // vertical spring to 0, alpha*u 
 var beta = 0.2;    // horizontal springs to 4-neighbors, laPlacian beta*(N+S+E+W - 4u)
-
+var mass = 1;
+    
 function setAlpha(a){
     alpha = a;
 }
 function setBeta(b){
     beta = b;
+}
+    
+function setMass(m){
+    mass = m;
+}
+
+function getParms(){
+    return { alpha:alpha, beta:beta, mass:mass }
 }
 
 function allocate2d(v){
@@ -129,42 +138,56 @@ function getU()  {return u  }
 function getUm() {return um }
 
 //global energies
-var potentialSides = 0;
-var potentialMain  = 0;
 var emitted = 0;
 var absorbed = 0;
-    
+
+//does not cover border cells
+//assumes all three of up, u, and um (at clockTic+1, clockTic, and clockTic-1) are valid
 function getEnergies(){
+    
+    let potentialSides = 0;
+    let potentialMain  = 0;
+    let kinetic = 0;
+    
+    for (let i=1;i<maxi;i++) { 
+        for (let j=1;j<maxj;j++){
+            let Uij = u[i][j];
+            let del1 = up[i][j] - Uij;
+            let del2 = Uij - um[i][j]; 
+            
+            let N = (u[i-1][j] - u[i][j]);
+            let S = (u[i+1][j] - u[i][j]);
+            let E = (u[i][j+1] - u[i][j]);
+            let W = (u[i][j-1] - u[i][j]);
+            let NSEW = N+S+E+W; //laplacian u[i-1][j] + u[i+1][j] + u[i][j+1] + u[i][j-1] - 4*Uij;
+            
+            //divide by two because you're calculating 
+            //work done against the spring to take it to current position, 
+            //and spring's force increases linearly with displacement,
+            //so taking triangular half of square area force*force,
+            //since choosing units such that 
+            //spatial (i,j) units equal u (orthogonal spring displacement) units
+            
+            potentialMain  += alpha*Uij*Uij/2; //in main spring displacement
+            
+            // each spring beta*y*y/2 is counted twice, by two neighbors, so divide by 2 again
+            potentialSides += beta*(N*N+S*S+E*E+W*W)/4; //in side springs displacements
+            
+            kinetic += mass*del1*del2/2;
+        }
+    }
+    
     return { 
         potentialSides:potentialSides,
         potentialMain:potentialMain,
-        kinetic:kineticEnergy(),
+        kinetic:kinetic,
         emitted:emitted,
         absorbed:absorbed,
     }
 }
-
-function kineticEnergy(){
-    let e = 0;
-    for (let i=0;i<height;i++) for (let j=0;j<width;j++) {
-        let del = u[i][j]-um[i][j];
-        e+= del * del/2; //not *beta! Spring tension's got nothing to do with kinetic energy
-    }
-    return e;
-}
     
 // calculates up = u + du/dt - alpha*u + beta*laplacian
 function standardFunc(Uij,Umij,N,S,E,W){ 
-
-    //update energies
-    //divide by two because you're calculating 
-    //work done against the spring to take it to current position, 
-    //and spring's force increases linearly with displacement,
-    //so taking triangular half of square area force*force,
-    //since choosing units such that 
-    //spatial (i,j) units equal u (orthogonal spring displacement) units
-    potentialMain  += alpha*Uij*Uij/2; //in main spring displacement
-    potentialSides += beta*(N*N + S*S + E*E + W*W)/2; //in side springs displacements
 
     //first term is u
     //remaining terms will make up next iteration's du/dt
@@ -176,17 +199,14 @@ function standardFunc(Uij,Umij,N,S,E,W){
     return  Uij //current value
             + Uij - Umij  //current du/dt
             // plus changes in du/dt for next iteration:
-            + alpha*(-Uij) // main spring displacement force
+            + alpha*(-Uij)/mass // main spring accelleration
             //+ beta*(u[i-1][j]+u[i+1][j]+u[i][j-1]+u[i][j+1] -4*u[i][j]) // Laplacian
             // N,S,E,W are *differences* betwen u and its 4 neighbors
-            + beta*(N+S+E+W); //side springs can cancel each other, do so on any flat slope
+            + beta*(N+S+E+W)/mass; //side springs can cancel each other, do so on any flat slope
 }
 
 function computeUp(){
     
-    potentialSides = 0;
-    potentialMain  = 0;
-
     //At boundries met by annulling counterwave?
     //Suppose 'missing' 4-neighbors at boundaries are virtualized as
     //the negative of their opposing side (thinking NSEW, if N is missing, use -S, etc).
@@ -227,15 +247,16 @@ function computeUp(){
         }
     }
     
-    pumpColumn(); //does nothing if pumpCol == 0, else overwrites up[][pumpCol].
+    pumpColumn(up); //does nothing if pumpCol == 0, else overwrites up[][pumpCol].
     
 }  
     
 function step(n=1){
     for (let i=0;i<n;i++){
+        advanceT(); //um <= u; u <= up; clockTic++
         computeUp();
-        advanceT();
-        renderToRGBA(u);
+        //so now up, u and um are valid, needed for getEnergies() of u
+        renderToRGBA(u); // when we display u, we've already computed up as well
     }
 }
     
@@ -248,29 +269,29 @@ function gaussian(distanceSquared,sigma){
 }
 
 //Per Ostrov and Rucker is bad to seed with discontinuities
-//Does not seed edges
+//Does not seed edges. Seeds up and u, which after advanceT will be u and um
 function seed(row,col,sigma,amplitude=1){
     var maxi = height - 1;
     var maxj = width - 1;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
-            um[i][j] = u[i][j] = amplitude*gaussian((i-row)*(i-row)+(j-col)*(j-col), sigma); //continuous in space
+            up[i][j] = u[i][j] = amplitude*gaussian((i-row)*(i-row)+(j-col)*(j-col), sigma); //continuous in space
             //and time, in that is at top dead center, about to turn down, i.e. vertical velocity is zero
         }
     }
 }
 
-var clockTic=0; //counts step advanceT's
+var clockTic = -1; //counts step advanceT's
 function setClockTic(st){clockTic=st}
 var pumpCol=0;
-function setPumpCol(pc){pumpCol=pc; setClockTic(0);}
+function setPumpCol(pc){pumpCol=pc; setClockTic(-1);}
 var pumpPeriod=9;
-function setPumpPeriod(p){pumpPeriod=p; setClockTic(0);}
+function setPumpPeriod(p){pumpPeriod=p; setClockTic(-1);}
     
-function pumpColumn(){ //period is number of tics in full cycle
+function pumpColumn(someU){ //period is number of tics in full cycle
     if (pumpCol<=0 || pumpCol>=width-1) return; //can't pump borders
     let amp = Math.sin(2*Math.PI*clockTic/pumpPeriod);
-    for (let i=0;i<height-1;i++){ up[i][pumpCol] = amp;}
+    for (let i=0;i<height-1;i++){ someU[i][pumpCol] = amp;}
 }
 
     
@@ -283,10 +304,12 @@ return {
         setZoom:setZoom,
         setAlpha: setAlpha,
         setBeta: setBeta,
+        setMass: setMass,
+        getParms:getParms,
         getEnergies: getEnergies,
-        kineticEnergy: kineticEnergy,
         step: step,
         seed: seed,
+        standardFunc: standardFunc,
         setClockTic: setClockTic,
         setPumpCol: setPumpCol,
         setPumpPeriod: setPumpPeriod,
