@@ -52,8 +52,11 @@ Be advised, this testbed is not user friendly and has been tested only in Chrome
         >Ripple Tank</a></h2> 
 
 <p> <strong> 1-9</strong>: steps <br>
-    <strong> c</strong>: clear
+    <strong> c</strong>: clear <br>
+    <strong> r</strong>: toggle rain <br>
+    <strong> a</strong>: toggle animation
 </p>
+    
 <font face="Courier">
 <p> 
     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;main:<span id='main'>mmm</span> <br>
@@ -78,8 +81,40 @@ function writeMessage(message) {
 function writeMousePos(message) {
     document.getElementById("mousePos").innerHTML = message;
 }
-    
 
+var animationFlag = false;
+var rainFlag = false;
+
+function stepRt(n=1){
+    rt.step(n);
+    
+    if (rainFlag) rt.renderToRGBA(rt.getU(),0.04);
+    else rt.renderToRGBA(rt.getU());
+}
+    
+function repeatAnimation(t){
+    if (rainFlag && Math.random()<0.01) seedRain();
+    stepRt(1);
+    if (animationFlag) requestAnimationFrame(repeatAnimation);
+}
+            
+function toggleAnimation(){
+    animationFlag = !animationFlag;
+    if (animationFlag) repeatAnimation();
+}
+    
+function toggleRain(){
+    rainFlag = !rainFlag;
+}
+
+function seedRain(){
+    //pick a random position, avoiding borders
+    let i = Math.floor(Math.random()*(myCanvas.height-4)) + 2;
+    let j = Math.floor(Math.random()*(myCanvas.width-4)) + 2;
+    rt.seedGaussian(i,j,3,1);
+}
+
+    
 function prefixIJ(prefixStr,cell){
     return prefixStr + cell.i + "," + cell.j;
 }
@@ -194,7 +229,15 @@ function pageFullyLoaded(e) {
             rt.clear();
         } else {
             let digit = parseInt(event.key);
-            if ( 1 <= digit && digit <= 9) rt.step(digit);
+            if ( 0 <= digit && digit <= 9) stepRt(digit);
+        }
+        
+        if (event.key == 'a' || event.key == 'A'){
+            toggleAnimation();
+        }
+        
+        if (event.key == 'r'|| event.key == 'R'){
+            toggleRain();
         }
         
         showEnergy();

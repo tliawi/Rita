@@ -256,7 +256,7 @@ function step(n=1){
         advanceT(); //um <= u; u <= up; clockTic++
         computeUp();
         //so now up, u and um are valid, needed for getEnergies() of u
-        renderToRGBA(u); // when we display u, we've already computed up as well
+        //renderToRGBA(u); // when we display u, we've already computed up as well
     }
 }
     
@@ -270,15 +270,66 @@ function gaussian(distanceSquared,sigma){
 
 //Per Ostrov and Rucker is bad to seed with discontinuities
 //Does not seed edges. Seeds up and u, which after advanceT will be u and um
-function seed(row,col,sigma,amplitude=1){
+function seedGaussian(row,col,sigma,amplitude=1){
     var maxi = height - 1;
     var maxj = width - 1;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
-            up[i][j] = u[i][j] = amplitude*gaussian((i-row)*(i-row)+(j-col)*(j-col), sigma); //continuous in space
-            //and time, in that is at top dead center, about to turn down, i.e. vertical velocity is zero
+            let g = amplitude*gaussian((i-row)*(i-row)+(j-col)*(j-col), sigma);
+            u[i][j]  += g; 
+            up[i][j] += g;
+            //continuous in space and time, 
+            //in that is at top dead center, about to turn down, 
+            //i.e. vertical velocity is zero
         }
     }
+}
+
+//does not cover borders
+//one use of amplifier is -1
+function copyU(uIn,uOut, amplifier=1){
+    var maxi = height - 1;
+    var maxj = width - 1;
+    for (let i=1;i<maxi;i++) { 
+        for (let j=1;j<maxj;j++){
+            uOut[i][j] = amplifier*uIn[i][j] ;
+        }
+    }
+}
+
+//does not cover borders
+function laplace(ux,i,j){
+    //N, S, E, W
+    return ux[i-1][j] + ux[i+1][j] + ux[i][j+1] + ux[i][j-1] - 4*ux[i][j];
+}
+    
+function secondDerivativeLaplace(uIn, uOut){
+    var maxi = height - 1;
+    var maxj = width - 1;
+    for (let i=1;i<maxi;i++) { 
+        for (let j=1;j<maxj;j++){
+            uOut[i][j] += laplace(uIn,i,j);
+        }
+    }
+}
+
+//seeds with second derivative of gaussian.
+//Does not seed edges. Seeds up and u, which after advanceT will be u and um
+//cannot be used during animation, since it clobbers up rather than adds to it
+function seedMexicanHat(row,col,sigma,amplitude=1){
+    seedGaussian(row,col,sigma,amplitude); //adds gaussian hill to up and u
+    secondDerivativeLaplace(u,up,1); //clobbers up to laplacian of u
+    copyU(up,u); //copy laplacian back into u
+}
+
+function integral(ux){
+    let r = 0;
+    for (let i=1;i<maxi;i++) { 
+        for (let j=1;j<maxj;j++){
+            r += ux[i][j];
+        }
+    }
+    return r;
 }
 
 var clockTic = -1; //counts step advanceT's
@@ -308,7 +359,9 @@ return {
         getParms:getParms,
         getEnergies: getEnergies,
         step: step,
-        seed: seed,
+        seedGaussian: seedGaussian,
+        seedMexicanHat: seedMexicanHat,
+        integral: integral,
         standardFunc: standardFunc,
         setClockTic: setClockTic,
         setPumpCol: setPumpCol,
