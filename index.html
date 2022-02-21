@@ -54,7 +54,8 @@ Be advised, this testbed is not user friendly and has been tested only in Chrome
 <p> <strong> 1-9</strong>: steps <br>
     <strong> c</strong>: clear <br>
     <strong> r</strong>: toggle rain <br>
-    <strong> a</strong>: toggle animation
+    <strong> a</strong>: toggle animation <br><br>
+    <strong> e</strong>: toggle energy bzw. wave height
 </p>
     
 <font face="Courier">
@@ -84,12 +85,36 @@ function writeMousePos(message) {
 
 var animationFlag = false;
 var rainFlag = false;
+var displayEnergyFlag = false;
+    
+function displayAll(){
+    let p = 6;
 
+    let energies = rt.getEnergies(); 
+
+    let pTotal = energies.potentialMain + energies.potentialSides;
+    let eTotal = pTotal + energies.kinetic;
+    document.getElementById('main').innerHTML = energies.potentialMain.toFixed(p);
+    document.getElementById('sides').innerHTML = energies.potentialSides.toFixed(p);
+    document.getElementById('potential').innerHTML = pTotal.toFixed(p);
+    document.getElementById('kinetic').innerHTML = energies.kinetic.toFixed(p);
+    document.getElementById('total').innerHTML = eTotal.toFixed(p);
+    document.getElementById('emitted').innerHTML = energies.emitted.toFixed(p);
+    document.getElementById('absorbed').innerHTML = energies.absorbed.toFixed(p);
+    
+    //render image
+    if (displayEnergyFlag) {
+        rt.renderToRGBA(energies.cellEnergy);
+    }
+    else {
+        if (rainFlag) rt.renderToRGBA(rt.getU(),0.04);
+        else rt.renderToRGBA(rt.getU());
+    }
+}
+    
 function stepRt(n=1){
     rt.step(n);
-    
-    if (rainFlag) rt.renderToRGBA(rt.getU(),0.04);
-    else rt.renderToRGBA(rt.getU());
+    displayAll();
 }
     
 function repeatAnimation(t){
@@ -105,6 +130,10 @@ function toggleAnimation(){
     
 function toggleRain(){
     rainFlag = !rainFlag;
+}
+
+function toggleDisplayEnergy(){
+    displayEnergyFlag = !displayEnergyFlag;
 }
 
 function seedRain(){
@@ -211,20 +240,6 @@ function pageFullyLoaded(e) {
     
     function keyupListener(event){
         
-        function showEnergy(){
-            let p = 6;
-            let energies = rt.getEnergies();
-            let pTotal = energies.potentialMain + energies.potentialSides;
-            let eTotal = pTotal + energies.kinetic;
-            document.getElementById('main').innerHTML = energies.potentialMain.toFixed(p);
-            document.getElementById('sides').innerHTML = energies.potentialSides.toFixed(p);
-            document.getElementById('potential').innerHTML = pTotal.toFixed(p);
-            document.getElementById('kinetic').innerHTML = energies.kinetic.toFixed(p);
-            document.getElementById('total').innerHTML = eTotal.toFixed(p);
-            document.getElementById('emitted').innerHTML = energies.emitted.toFixed(p);
-            document.getElementById('absorbed').innerHTML = energies.absorbed.toFixed(p);
-        }
-        
         if (event.key == 'c' || event.key == 'C'){
             rt.clear();
         } else {
@@ -240,7 +255,9 @@ function pageFullyLoaded(e) {
             toggleRain();
         }
         
-        showEnergy();
+        if (event.key == 'e'|| event.key == 'E'){
+            toggleDisplayEnergy();
+        }
         
         return false;
     }

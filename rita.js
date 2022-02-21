@@ -79,7 +79,7 @@ function magnitude(numArr){ //numArr a one dimensional numeric array
 // clobbers rgba, a global r,g,b,alpha linear canvas data array visualizing the numeric data 
 // in a given height x width numeric array (like um,u,up)
 // Numeric values are rendered in a spectrum 
-// from green (positive) to yellow (zero) to red (negative).
+// from green (positive) to black (zero) to red (negative).
 // Call with no second parm to have it adapt color range to datapoint having maximum magnitude.
 function renderToRGBA(numArr, mag){
     
@@ -137,10 +137,8 @@ function getUp() {return up }
 function getU()  {return u  }
 function getUm() {return um }
 
-//global energies
-var emitted = 0;
-var absorbed = 0;
-
+var cellEnergy = allocate2d(0.0);
+    
 //does not cover border cells
 //assumes all three of up, u, and um (at clockTic+1, clockTic, and clockTic-1) are valid
 function getEnergies(){
@@ -149,16 +147,19 @@ function getEnergies(){
     let potentialMain  = 0;
     let kinetic = 0;
     
+    var emitted = 0;
+    var absorbed = 0;
+    
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
             let Uij = u[i][j];
             let del1 = up[i][j] - Uij;
             let del2 = Uij - um[i][j]; 
             
-            let N = (u[i-1][j] - u[i][j]);
-            let S = (u[i+1][j] - u[i][j]);
-            let E = (u[i][j+1] - u[i][j]);
-            let W = (u[i][j-1] - u[i][j]);
+            let N = (u[i-1][j] - Uij);
+            let S = (u[i+1][j] - Uij);
+            let E = (u[i][j+1] - Uij);
+            let W = (u[i][j-1] - Uij);
             let NSEW = N+S+E+W; //laplacian u[i-1][j] + u[i+1][j] + u[i][j+1] + u[i][j-1] - 4*Uij;
             
             //divide by two because you're calculating 
@@ -168,12 +169,23 @@ function getEnergies(){
             //since choosing units such that 
             //spatial (i,j) units equal u (orthogonal spring displacement) units
             
-            potentialMain  += alpha*Uij*Uij/2; //in main spring displacement
-            
+            let epMain = alpha*Uij*Uij/2; //potential energy in main spring displacement
             // each spring beta*y*y/2 is counted twice, by two neighbors, so divide by 2 again
-            potentialSides += beta*(N*N+S*S+E*E+W*W)/4; //in side springs displacements
+            let epSides = beta*(N*N+S*S+E*E+W*W)/4; //in side springs displacements
             
-            kinetic += mass*del1*del2/2;
+            //This is magic. Not del1^2, not del2^2, but del1*del2. This can go negative, 
+            // at top and bottom of swing, when del changes directions
+            // and dels are smallest in magnitude (so is a very small negative value).
+            //This magic makes total energy work out.
+            //See second sheet of bit.ly/testAccessOpen simple harmonic oscillator spreadsheet
+            let eKinetic = mass*del1*del2/2;
+            
+            potentialMain += epMain;
+            potentialSides += epSides;
+            kinetic += eKinetic;
+            
+            cellEnergy[i][j] = epMain + epSides + eKinetic;
+            
         }
     }
     
@@ -183,7 +195,17 @@ function getEnergies(){
         kinetic:kinetic,
         emitted:emitted,
         absorbed:absorbed,
+        cellEnergy:cellEnergy,
     }
+}
+
+// John Hartwell's W(t+1, L) = [ W(t, L) + a * W(t+1, L-1)]  / (1 + a), 
+// where a = V * delta_t / delta_x
+// Here Uij is current value of an absorbing cell, 
+// and UPneighbor is an already computed up value of an interior cell
+function absorbingFunc(Uij,UPneighbor){
+    let a = Math.sqrt(beta/mass);
+    return (Uij + a*UPneighbor)/(1+a);
 }
     
 // calculates up = u + du/dt - alpha*u + beta*laplacian
@@ -215,7 +237,6 @@ function computeUp(){
     //will be insensitive to anything in interior (since E-W is zero), so will only propagate along the edge,
     //which if it wasn't initialized to nonzero values will stay 0.
     //returns u[i][j] save for border cells, when it returns inner neighbor
-    
     function noBorder(i,j){
         i = i==0?1:i; 
         i = i==maxi?maxi-1:i;
@@ -226,6 +247,7 @@ function computeUp(){
         return u[i][j];
     }
     
+    /*
     //four edges
     //left and right
     for (let i=0;i<maxi;i++) { 
@@ -233,12 +255,13 @@ function computeUp(){
         up[i][maxj] = noBorder(i,maxj);
     }
     //top and bottom
-    for (let j=1;j<maxj;j++){
+    for (let j=0;j<maxj;j++){
         up[0][j] = noBorder(0,j);
         up[maxi][j] = noBorder(maxi,j);
     }
+    */
     
-    //core
+    //core interior cells, not on border
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
             let UIJ = u[i][j];
@@ -246,6 +269,24 @@ function computeUp(){
                        u[i-1][j]-UIJ, u[i+1][j]-UIJ, u[i][j+1]-UIJ, u[i][j-1]-UIJ);
         }
     }
+    
+    //four edges
+    //for absorbingFunc, must be done AFTER interior cells have been UPped
+    //left and right
+    for (let i=1;i<maxi;i++) { 
+        up[i][0] = absorbingFunc(u[i][0], up[i][1]);
+        up[i][maxj] = absorbingFunc(u[i][maxj], up[i][maxj-1]);
+    }
+    //top and bottom
+    for (let j=1;j<maxj;j++){
+        up[0][j] = absorbingFunc(u[0][j], up[1][j]);
+        up[maxi][j] = absorbingFunc(u[maxi][j], up[maxi-1][j]);
+    }
+    //kludge corners
+    up[0][0] = absorbingFunc(u[0][0], up[1][1]);
+    up[maxi][0] = absorbingFunc(u[maxi][0], up[maxi-1][1]);
+    up[0][maxj] = absorbingFunc(u[0][maxj], up[1][maxj-1]);
+    up[maxi][maxj] = absorbingFunc(u[maxi][maxj], up[maxi-1][maxj-1]);
     
     pumpColumn(up); //does nothing if pumpCol == 0, else overwrites up[][pumpCol].
     
@@ -308,7 +349,7 @@ function secondDerivativeLaplace(uIn, uOut){
     var maxj = width - 1;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
-            uOut[i][j] += laplace(uIn,i,j);
+            uOut[i][j] = laplace(uIn,i,j);
         }
     }
 }
@@ -342,7 +383,7 @@ function setPumpPeriod(p){pumpPeriod=p; setClockTic(-1);}
 function pumpColumn(someU){ //period is number of tics in full cycle
     if (pumpCol<=0 || pumpCol>=width-1) return; //can't pump borders
     let amp = Math.sin(2*Math.PI*clockTic/pumpPeriod);
-    for (let i=0;i<height-1;i++){ someU[i][pumpCol] = amp;}
+    for (let i=1;i<height-1;i++){ someU[i][pumpCol] = amp;}
 }
 
     
