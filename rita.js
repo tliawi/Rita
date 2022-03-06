@@ -28,7 +28,7 @@ var zoom = 1; //scale of drawImage
 
 // C+ = gain*((N0+S0+E0+W0) + present*C0 + past*C- )
     
-var alpha = 0.002; // vertical spring to 0, alpha*u 
+var alpha = 0; // vertical spring to 0, alpha*u .  0.002?
 var beta = 0.2;    // horizontal springs to 4-neighbors, laPlacian beta*(N+S+E+W - 4u)
 var mass = 1;
     
@@ -44,7 +44,7 @@ function setMass(m){
 }
 
 function getParms(){
-    return { alpha:alpha, beta:beta, mass:mass }
+    return { alpha:alpha, beta:beta, mass:mass , clockTic: clockTic }
 }
 
 function allocate2d(v){
@@ -56,6 +56,7 @@ function allocate2d(v){
 function clear(){
     potentialSides = 0;
     potentialMain  = 0;
+    clockTic = -1;
     for (let i=0;i<height;i++) for (let j=0;j<width;j++) u[i][j] = up[i][j] = um[i][j] = 0;
     clearRGBA();
 }
@@ -199,14 +200,29 @@ function getEnergies(){
     }
 }
 
+var fudge=1;
+function setFudge(f){fudge = f;}
+
 // John Hartwell's W(t+1, L) = [ W(t, L) + a * W(t+1, L-1)]  / (1 + a), 
 // where a = V * delta_t / delta_x
 // Here Uij is current value of an absorbing cell, 
 // and UPneighbor is an already computed up value of an interior cell
 function absorbingFunc(Uij,UPneighbor){
-    let a = Math.sqrt(beta/mass);
+    let a = Math.sqrt(beta/mass)*fudge;
     return (Uij + a*UPneighbor)/(1+a);
 }
+
+// John Hartwell's second attempt, moving from t-0.5 to t,
+// where a is still V * delta_t / delta_x. 
+// W(t+1,L) = { 4*W(t,L) - W(t-1,L)  + a * [4*W(t+1,L-1) - W(t+1,L-2)] } / [3 * (1 + a)]
+function absorbingFunc2(Uij, UMij, UPnbr, UPnbrnbr){
+    let a = Math.sqrt(beta/mass)*fudge;
+    return (4*Uij - UMij + a*(4*UPnbr - UPnbrnbr))/(3*(1+a));
+}
+
+var funcSwitch=false;
+//true or false, absorbingFunc or absorbingFunc2
+function toggleFuncSwitch(tf){funcSwitch = !funcSwitch; return funcSwitch;} 
     
 // calculates up = u + du/dt - alpha*u + beta*laplacian
 function standardFunc(Uij,Umij,N,S,E,W){ 
@@ -261,6 +277,7 @@ function computeUp(){
     }
     */
     
+    
     //core interior cells, not on border
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
@@ -270,24 +287,47 @@ function computeUp(){
         }
     }
     
-    //four edges
-    //for absorbingFunc, must be done AFTER interior cells have been UPped
-    //left and right
-    for (let i=1;i<maxi;i++) { 
-        up[i][0] = absorbingFunc(u[i][0], up[i][1]);
-        up[i][maxj] = absorbingFunc(u[i][maxj], up[i][maxj-1]);
-    }
-    //top and bottom
-    for (let j=1;j<maxj;j++){
-        up[0][j] = absorbingFunc(u[0][j], up[1][j]);
-        up[maxi][j] = absorbingFunc(u[maxi][j], up[maxi-1][j]);
-    }
-    //kludge corners
-    up[0][0] = absorbingFunc(u[0][0], up[1][1]);
-    up[maxi][0] = absorbingFunc(u[maxi][0], up[maxi-1][1]);
-    up[0][maxj] = absorbingFunc(u[0][maxj], up[1][maxj-1]);
-    up[maxi][maxj] = absorbingFunc(u[maxi][maxj], up[maxi-1][maxj-1]);
     
+    //four edges
+    //for absorbingFuncs, must be done AFTER interior cells have been UPped
+    if (funcSwitch){
+        
+        //left and right
+        for (let i=1;i<maxi;i++) { 
+            up[i][0] = absorbingFunc(u[i][0], up[i][1]);
+            up[i][maxj] = absorbingFunc(u[i][maxj], up[i][maxj-1]);
+        }
+        //top and bottom
+        for (let j=1;j<maxj;j++){
+            up[0][j] = absorbingFunc(u[0][j], up[1][j]);
+            up[maxi][j] = absorbingFunc(u[maxi][j], up[maxi-1][j]);
+        }
+        //kludge corners
+        up[0][0] = absorbingFunc(u[0][0], up[1][1]);
+        up[maxi][0] = absorbingFunc(u[maxi][0], up[maxi-1][1]);
+        up[0][maxj] = absorbingFunc(u[0][maxj], up[1][maxj-1]);
+        up[maxi][maxj] = absorbingFunc(u[maxi][maxj], up[maxi-1][maxj-1]);
+        
+    } else {
+        
+        //left and right
+        for (let i=1;i<maxi;i++) { 
+            up[i][0] = absorbingFunc2(u[i][0], um[i][0], up[i][1], up[i][2]);
+            up[i][maxj] = absorbingFunc2(u[i][maxj], um[i][maxj], up[i][maxj-1], up[i][maxj-2]);
+        }
+        //top and bottom
+        for (let j=1;j<maxj;j++){
+            up[0][j] = absorbingFunc2(u[0][j], um[0][j], up[1][j], up[2][j]);
+            up[maxi][j] = absorbingFunc2(u[maxi][j], um[maxi][j], up[maxi-1][j], up[maxi-2][j]);
+        }
+        //kludge corners
+        up[0][0] = absorbingFunc2(u[0][0], um[0][0], up[1][1], up[2][2]);
+        up[maxi][0] = absorbingFunc2(u[maxi][0], um[maxi][0], up[maxi-1][1], up[maxi-2][1]);
+        up[0][maxj] = absorbingFunc2(u[0][maxj], um[0][maxj], up[1][maxj-1], up[1][maxj-2]);
+        up[maxi][maxj] = absorbingFunc2(u[maxi][maxj], um[maxi][maxj], up[maxi-1][maxj-1], up[maxi-2][maxj-2]);
+        
+    }
+
     pumpColumn(up); //does nothing if pumpCol == 0, else overwrites up[][pumpCol].
     
 }  
@@ -312,8 +352,6 @@ function gaussian(distanceSquared,sigma){
 //Per Ostrov and Rucker is bad to seed with discontinuities
 //Does not seed edges. Seeds up and u, which after advanceT will be u and um
 function seedGaussian(row,col,sigma,amplitude=1){
-    var maxi = height - 1;
-    var maxj = width - 1;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
             let g = amplitude*gaussian((i-row)*(i-row)+(j-col)*(j-col), sigma);
@@ -329,8 +367,6 @@ function seedGaussian(row,col,sigma,amplitude=1){
 //does not cover borders
 //one use of amplifier is -1
 function copyU(uIn,uOut, amplifier=1){
-    var maxi = height - 1;
-    var maxj = width - 1;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
             uOut[i][j] = amplifier*uIn[i][j] ;
@@ -345,8 +381,6 @@ function laplace(ux,i,j){
 }
     
 function secondDerivativeLaplace(uIn, uOut){
-    var maxi = height - 1;
-    var maxj = width - 1;
     for (let i=1;i<maxi;i++) { 
         for (let j=1;j<maxj;j++){
             uOut[i][j] = laplace(uIn,i,j);
@@ -375,6 +409,7 @@ function integral(ux){
 
 var clockTic = -1; //counts step advanceT's
 function setClockTic(st){clockTic=st}
+    
 var pumpCol=0;
 function setPumpCol(pc){pumpCol=pc; setClockTic(-1);}
 var pumpPeriod=9;
@@ -408,5 +443,10 @@ return {
         setPumpCol: setPumpCol,
         setPumpPeriod: setPumpPeriod,
         getUp: getUp, getU:getU, getUm: getUm,
+    
+        setFudge:setFudge,
+        absorbingFunc:absorbingFunc,
+        toggleFuncSwitch:toggleFuncSwitch,
+        absorbingFunc2:absorbingFunc2,
     };
 }

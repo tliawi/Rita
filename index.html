@@ -66,7 +66,11 @@ Be advised, this testbed is not user friendly and has been tested only in Chrome
     &nbsp;&nbsp;kinetic:<span id='kinetic'>kkk</span> <br>
     &nbsp;&nbsp;&nbsp;&nbsp;Total:<span id='total'>ttt</span> <br><br>
     &nbsp;&nbsp;emitted:<span id='emitted'>eee</span> <br>
-    &nbsp;absorbed:<span id='absorbed'>aaa</span> <br>
+    &nbsp;absorbed:<span id='absorbed'>aaa</span> <br><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;alpha:<span id='alpha'>eee</span> <br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;beta:<span id='beta'>eee</span> <br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mass:<span id='mass'>eee</span> <br>
+    iteration:<span id='iteration'>eee</span> <br>
 </p>
 </font>
     
@@ -88,7 +92,7 @@ var rainFlag = false;
 var displayEnergyFlag = false;
     
 function displayAll(){
-    let p = 6;
+    let p = 9;
 
     let energies = rt.getEnergies(); 
 
@@ -101,6 +105,11 @@ function displayAll(){
     document.getElementById('total').innerHTML = eTotal.toFixed(p);
     document.getElementById('emitted').innerHTML = energies.emitted.toFixed(p);
     document.getElementById('absorbed').innerHTML = energies.absorbed.toFixed(p);
+    let parms = rt.getParms();
+    document.getElementById('alpha').innerHTML= parms.alpha;
+    document.getElementById('beta').innerHTML= parms.beta;
+    document.getElementById('mass').innerHTML= parms.mass;
+    document.getElementById('iteration').innerHTML= parms.clockTic;
     
     //render image
     if (displayEnergyFlag) {
