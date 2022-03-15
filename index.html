@@ -55,21 +55,12 @@ Be advised, this testbed is not user friendly and has been tested only in Chrome
     <strong> c</strong>: clear <br>
     <strong> r</strong>: toggle rain <br>
     <strong> a</strong>: toggle animation <br><br>
-    <strong> e</strong>: toggle energy bzw. wave height
+    <strong> b</strong>: toggle black vs red
 </p>
     
 <font face="Courier">
 <p> 
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;main:<span id='main'>mmm</span> <br>
-    &nbsp;&nbsp;&nbsp;&nbsp;sides:<span id='sides'>sss</span> <br><br>
-    potential:<span id='potential'>ppp</span> <br>
-    &nbsp;&nbsp;kinetic:<span id='kinetic'>kkk</span> <br>
-    &nbsp;&nbsp;&nbsp;&nbsp;Total:<span id='total'>ttt</span> <br><br>
-    &nbsp;&nbsp;emitted:<span id='emitted'>eee</span> <br>
-    &nbsp;absorbed:<span id='absorbed'>aaa</span> <br><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;alpha:<span id='alpha'>eee</span> <br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;beta:<span id='beta'>eee</span> <br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mass:<span id='mass'>eee</span> <br>
+    stiffness:<span id='stiffness'>eee</span> <br>
     iteration:<span id='iteration'>eee</span> <br>
 </p>
 </font>
@@ -89,36 +80,18 @@ function writeMousePos(message) {
 
 var animationFlag = false;
 var rainFlag = false;
-var displayEnergyFlag = false;
+var redBlackFlag = 0;
     
 function displayAll(){
     let p = 9;
 
-    let energies = rt.getEnergies(); 
-
-    let pTotal = energies.potentialMain + energies.potentialSides;
-    let eTotal = pTotal + energies.kinetic;
-    document.getElementById('main').innerHTML = energies.potentialMain.toFixed(p);
-    document.getElementById('sides').innerHTML = energies.potentialSides.toFixed(p);
-    document.getElementById('potential').innerHTML = pTotal.toFixed(p);
-    document.getElementById('kinetic').innerHTML = energies.kinetic.toFixed(p);
-    document.getElementById('total').innerHTML = eTotal.toFixed(p);
-    document.getElementById('emitted').innerHTML = energies.emitted.toFixed(p);
-    document.getElementById('absorbed').innerHTML = energies.absorbed.toFixed(p);
     let parms = rt.getParms();
-    document.getElementById('alpha').innerHTML= parms.alpha;
-    document.getElementById('beta').innerHTML= parms.beta;
-    document.getElementById('mass').innerHTML= parms.mass;
+    document.getElementById('stiffness').innerHTML= parms.stiffness;
     document.getElementById('iteration').innerHTML= parms.clockTic;
     
     //render image
-    if (displayEnergyFlag) {
-        rt.renderToRGBA(energies.cellEnergy);
-    }
-    else {
-        if (rainFlag) rt.renderToRGBA(rt.getU(),0.04);
-        else rt.renderToRGBA(rt.getU());
-    }
+    if (rainFlag) rt.renderToRGBA(rt.getU(), redBlackFlag, 0.04);
+    else rt.renderToRGBA(rt.getU(), redBlackFlag);
 }
     
 function stepRt(n=1){
@@ -141,15 +114,15 @@ function toggleRain(){
     rainFlag = !rainFlag;
 }
 
-function toggleDisplayEnergy(){
-    displayEnergyFlag = !displayEnergyFlag;
+function toggleRedBlack(){
+    redBlackFlag = redBlackFlag?0:1;
 }
 
 function seedRain(){
     //pick a random position, avoiding borders
     let i = Math.floor(Math.random()*(myCanvas.height-4)) + 2;
     let j = Math.floor(Math.random()*(myCanvas.width-4)) + 2;
-    rt.seedGaussian(i,j,3,1);
+    rt.seedGaussian(i,j,redBlackFlag,3,1);
 }
 
     
@@ -264,8 +237,8 @@ function pageFullyLoaded(e) {
             toggleRain();
         }
         
-        if (event.key == 'e'|| event.key == 'E'){
-            toggleDisplayEnergy();
+        if (event.key == 'b'|| event.key == 'B'){
+            toggleRedBlack();
         }
         
         return false;
