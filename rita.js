@@ -61,8 +61,8 @@ function clearRGBA(){
 }
 
     
-function magnitude(numArr){ //numArr a one dimensional numeric array
-    return Math.max(Math.max(...numArr), -Math.min(...numArr));
+function magnitude(numArr1D){ //numArr1D a one dimensional numeric array
+    return Math.max(Math.max(...numArr1D), -Math.min(...numArr1D));
 }
 
 // clobbers rgba, a global r,g,b,alpha linear canvas data array visualizing the numeric data 
@@ -90,13 +90,10 @@ function renderToRGBA(numArr, redBlack, mag){
         rgba[ix+3] = 255; //alpha
     }
     
-    if (mag == undefined){
-        // find greatest magnitude, to normalize with
+    if (mag == undefined) { 
         mag = 0;
-        for (let i=1;i<maxi;i++) for (let j=1; j<maxj; j++) if ( ((i+j)&1) == redBlack )
-            mag = Math.max(mag,magnitude(numArr[i]));
-    }
-    else mag = Math.abs(mag); //guard against negative parameter
+        for (let i = 1; i<maxi; i++) mag = Math.max(mag,magnitude(numArr[i]));
+    } else mag = Math.abs(mag); //guard against negative parameter
     if (mag==0) mag = 1; //avoid zerodivide in toxic all-zero case
     
     //rgba is linear canvas rgba data array of integer 0-255 values
@@ -105,8 +102,9 @@ function renderToRGBA(numArr, redBlack, mag){
           let ix = 4*(i*width + j); //offset to R component in linear RGBA array
           if ( ((i+j)&1) == redBlack ){
             colorRGBA(numArr[i][j], ix );
-          } else { //fill in with average of 4 neighbors of the same color
-            colorRGBA( (numArr[i-1][j] + numArr[i+1][j] + numArr[i][j-1] + numArr[i][j+1])/4, ix);
+          } else { colorRGBA( 0, ix);
+            //fill in with average of 4 neighbors of color opposite to that of i,j
+            //colorRGBA( (numArr[i-1][j] + numArr[i+1][j] + numArr[i][j-1] + numArr[i][j+1])/4, ix);
           }
         }
     }
@@ -118,13 +116,8 @@ function renderToRGBA(numArr, redBlack, mag){
 }
 
 var u = allocate2d(0.0);
-    
-function advanceT(){
-    clockTic+= 2;
-}
 
 function getU()  {return u  }
-
 
     
 // John Hartwell's W(t+1, L) = [ W(t, L) + a * W(t+1, L-1)]  / (1 + a), 
@@ -134,7 +127,7 @@ function getU()  {return u  }
 function absorbingFunc(Uij,UPneighbor){
     let a = Math.sqrt(beta/mass);
     return (Uij + a*UPneighbor)/(1+a);
-}
+} 
 
 // John Hartwell's second attempt, moving from t-0.5 to t,
 // where a is still V * delta_t / delta_x. 
@@ -145,24 +138,28 @@ function absorbingFunc2(Uij, UMij, UPnbr, UPnbrnbr){
 }
 
 
-function computeRedBlack(){
+function computeRedBlack(t){
     
-    //red cells
-    for (let i=1;i<maxi;i++) for (let j=1; j<maxj; j++) if ( !((i+j)&1) )  //note !
-        u[i][j] += stiffness*(  (u[i+1][j]-u[i-1][j])  +  (u[i][j+1] - u[i][j-1])  ); //note +=
+    let redBlack = (t&1); // 0 when t even, 1 when t odd
+    //let sign = 1;// redBlack==0?1:-1; // -1 when t even, +1 when t odd
+    //console.log(t, redBlack, 0==redBlack, 1==redBlack);
     
-    //the red pass must be complete before the black pass, at time clockTic+1, is done
+    //((i+j)&1) == redBlack does not work if parens around lhs omitted!
+    for (let i=1;i<maxi;i++) for (let j=1; j<maxj; j++) if ( ((i+j)&1) == redBlack ) {
+        u[i][j] += stiffness*( (u[i-1][j]-u[i+1][j]) ); //does it work in 1D??
+        //u[i][j] += stiffness*( (u[i][j-1] - u[i][j+1]) + (u[i-1][j]-u[i+1][j]) ); //no sign change
+        //if (redBlack) u[i][j] += stiffness*( (u[i][j+1] - u[i][j-1]) + (u[i+1][j]-u[i-1][j]) ); //sign change
+        //else u[i][j] -= stiffness*( (u[i][j+1] - u[i][j-1]) + (u[i+1][j]-u[i-1][j]) );
+    }
     
-    //black cells
-    for (let i=1;i<maxi;i++) for (let j=1; j<maxj; j++) if (  ((i+j)&1) )  //note no !
-        u[i][j] -= stiffness*(  (u[i+1][j]-u[i-1][j])  +  (u[i][j+1] - u[i][j-1])  ); //note -=
-    
+    // stuck: neither is what I want
+    // no sign change: spawns NW and SE moving blobs, are corners of square
+    // sign change: slow growing diffusion blob, of highest freq alternating sign
 }
     
 function step(n=1){
     for (let i=0;i<n;i++){
-        advanceT();
-        computeRedBlack();
+        computeRedBlack(++clockTic);
     }
 }
     
@@ -175,10 +172,10 @@ function gaussian(distanceSquared,sigma){
 }
 
 //Per Ostrov and Rucker is bad to seed with discontinuities
-//Does not seed edges. Seeds red or black cells in u, which after advanceT will be u and um
+//Does not seed edges. Seeds red or black cells in u
 function seedGaussian(row,col,redBlack,sigma,amplitude=1){
     for (let i=1;i<maxi;i++) { 
-        for (let j=1;j<maxj;j++) if ( ((i+j)&1) == redBlack) { //does not work if parens around lhs omitted!
+        for (let j=1;j<maxj;j++) if ( ((i+j)&1) == redBlack) { 
             let g = amplitude*gaussian((i-row)*(i-row)+(j-col)*(j-col), sigma);
             u[i][j]  += g; 
             //continuous in space and time, 
@@ -186,6 +183,10 @@ function seedGaussian(row,col,redBlack,sigma,amplitude=1){
             //i.e. vertical velocity is zero
         }
     }
+}
+    
+function seed(i,j){ //heedless of redBlack
+    if (i>0&&i<maxi && j>0 && j<maxj) u[i][j]=1;
 }
 
 /*
@@ -204,7 +205,7 @@ function secondDerivativeLaplace(uIn, uOut){
 }
 
 //seeds with second derivative of gaussian.
-//Does not seed edges. Seeds up and u, which after advanceT will be u and um
+//Does not seed edges. Seeds up and u, which after step will be u and um
 //cannot be used during animation, since it clobbers up rather than adds to it
 function seedMexicanHat(row,col,redBlack,sigma,amplitude=1){
     seedGaussian(row,col,redBlack,sigma,amplitude); //adds gaussian hill to up and u
@@ -223,7 +224,7 @@ function integral(ux){
     return r;
 }
 
-var clockTic = 0; //counts step advanceT's
+var clockTic = 0; //counts steps
 function setClockTic(st){clockTic=st}
 
 /*
@@ -257,6 +258,7 @@ return {
         //setPumpCol: setPumpCol,
         //setPumpPeriod: setPumpPeriod,
         getU:getU, 
+        seed:seed,
     
     };
 }

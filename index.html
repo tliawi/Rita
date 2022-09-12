@@ -90,8 +90,7 @@ function displayAll(){
     document.getElementById('iteration').innerHTML= parms.clockTic;
     
     //render image
-    if (rainFlag) rt.renderToRGBA(rt.getU(), redBlackFlag, 0.04);
-    else rt.renderToRGBA(rt.getU(), redBlackFlag);
+    rt.renderToRGBA(rt.getU(), redBlackFlag);
 }
     
 function stepRt(n=1){
@@ -116,6 +115,7 @@ function toggleRain(){
 
 function toggleRedBlack(){
     redBlackFlag = redBlackFlag?0:1;
+    displayAll();
 }
 
 function seedRain(){
@@ -185,6 +185,9 @@ function pageFullyLoaded(e) {
         
         writeMessage(prefixIJ('dn ',tempDn)+prefixIJ("  up ",mouseUpPos));
         writeMousePos(prefixIJ("",mouseUpPos));
+        
+        rt.seed(mouseUpPos.i, mouseUpPos.j);
+        displayAll();
         
     }
     
